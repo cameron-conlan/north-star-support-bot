@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>North Star Outdoor Co. — Support Bot</title>
+<style>
+  :root{
+    /* Palette derived from USGS topographic quad sheets */
+    --quad:       #EDE8DA;  /* map paper */
+    --quad-deep:  #E2DCCA;  /* paper, shaded */
+    --contour:    #A8875E;  /* contour bistre */
+    --basin:      #1D3F4E;  /* deep water — primary ink */
+    --water:      #4E8FA8;  /* shallow water — accent */
+    --pine:       #3E5C43;  /* vegetation tint */
+    --blaze:      #C8462B;  /* trail blaze — alerts + live agent only */
+    --birch:      #F9F7F1;  /* bubble fill */
+
+    --serif: "Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+    --body: system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono: ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  }
+
+  *{box-sizing:border-box}
+
+  body{
+    margin:0;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px 16px;
+    background:var(--quad-deep);
+    font-family:var(--body);
+    color:var(--basin);
+  }
+
+  .ns-app{
+    width:100%;
+    max-width:760px;
+    height:min(88vh,860px);
+    display:flex;
+    flex-direction:column;
+    background:var(--quad);
+    border:1px solid var(--contour);
+    box-shadow:0 18px 50px -22px rgba(29,63,78,.5);
+    overflow:hidden;
+  }
+
+  /* ── Header ─────────────────────────────────────────── */
+  .ns-head{
+    padding:18px 22px 0;
+    border-bottom:1px solid var(--contour);
+    background:var(--quad);
+    flex:none;
+  }
+  .ns-brand{display:flex;align-items:center;gap:11px}
+  .ns-star{flex:none;color:var(--basin)}
+  .ns-wordmark{
+    font-family:var(--serif);
+    font-size:20px;
+    letter-spacing:.01em;
+    line-height:1;
+  }
+  .ns-sub{
+    font-family:var(--mono);
+    font-size:10.5px;
+    letter-spacing:.13em;
+    text-transform:uppercase;
+    color:var(--contour);
+    margin-top:4px;
+  }
+
+  /* The signature: a live readout of the bot's conversation state */
+  .ns-strip{
+    display:flex;
+    align-items:center;
+    gap:0;
+    margin-top:16px;
+    border-top:1px solid var(--contour);
+    font-family:var(--mono);
+    font-size:10.5px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+  }
+  .ns-cell{
+    padding:9px 14px 9px 0;
+    color:var(--contour);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .ns-cell b{font-weight:600;color:var(--basin);letter-spacing:.08em}
+  .ns-cell + .ns-cell{padding-left:14px;border-left:1px solid var(--contour)}
+  .ns-cell.is-grow{flex:1;min-width:0}
+  .ns-app[data-live="1"] .ns-strip .ns-cell b{color:var(--blaze)}
+
+  /* ── Transcript ─────────────────────────────────────── */
+  .ns-scrollwrap{position:relative;flex:1;min-height:0}
+  .ns-topo{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    opacity:.3;
+    pointer-events:none;
+  }
+  .ns-scroll{
+    position:relative;
+    height:100%;
+    overflow-y:auto;
+    padding:22px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    scrollbar-width:thin;
+    scrollbar-color:var(--contour) transparent;
+  }
+
+  .ns-row{display:flex;max-width:88%}
+  .ns-row.from-bot{align-self:flex-start}
+  .ns-row.from-user{align-self:flex-end}
+
+  .ns-msg{
+    padding:11px 14px;
+    border-radius:2px;
+    font-size:15px;
+    line-height:1.52;
+    animation:rise .18s ease-out;
+  }
+  .from-bot .ns-msg{
+    background:var(--birch);
+    border:1px solid var(--contour);
+    color:var(--basin);
+  }
+  .from-user .ns-msg{
+    background:var(--basin);
+    color:var(--birch);
+  }
+  .from-agent .ns-msg{
+    background:var(--birch);
+    border:1px solid var(--contour);
+    border-left:3px solid var(--blaze);
+    color:var(--basin);
+  }
+  .ns-msg p{margin:0}
+  .ns-msg p + p{margin-top:.65em}
+  .ns-msg ul{margin:.6em 0 0;padding-left:1.15em}
+  .ns-msg li{margin:.22em 0}
+  .ns-msg a{color:var(--water);text-underline-offset:2px}
+  .ns-msg a:hover{color:var(--basin)}
+
+  .ns-who{
+    font-family:var(--mono);
+    font-size:9.5px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--blaze);
+    margin-bottom:5px;
+  }
+
+  /* Status chip */
+  .ns-chip{
+    display:inline-block;
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:.11em;
+    text-transform:uppercase;
+    padding:3px 8px;
+    border-radius:2px;
+    color:var(--birch);
+    margin-bottom:8px;
+  }
+  .ns-chip[data-s="shipped"]   {background:var(--pine)}
+  .ns-chip[data-s="processing"]{background:var(--contour)}
+  .ns-chip[data-s="delivered"] {background:var(--basin)}
+  .ns-chip[data-s="invalid"]   {background:var(--blaze)}
+
+  /* Typing indicator */
+  .ns-typing{display:flex;gap:4px;padding:14px}
+  .ns-typing i{
+    width:5px;height:5px;border-radius:50%;
+    background:var(--contour);
+    animation:blip 1.1s infinite ease-in-out;
+  }
+  .ns-typing i:nth-child(2){animation-delay:.16s}
+  .ns-typing i:nth-child(3){animation-delay:.32s}
+
+  /* ── Composer ───────────────────────────────────────── */
+  .ns-foot{
+    flex:none;
+    border-top:1px solid var(--contour);
+    background:var(--quad);
+    padding:12px 14px 14px;
+  }
+  .ns-quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .ns-quick:empty{display:none}
+  .ns-qr{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.05em;
+    padding:7px 11px;
+    border-radius:2px;
+    border:1px solid var(--contour);
+    background:transparent;
+    color:var(--basin);
+    cursor:pointer;
+    transition:background .12s,color .12s;
+  }
+  .ns-qr:hover{background:var(--basin);border-color:var(--basin);color:var(--birch)}
+  .ns-app[data-live="1"] .ns-qr:hover{background:var(--blaze);border-color:var(--blaze)}
+
+  .ns-compose{display:flex;gap:8px}
+  .ns-input{
+    flex:1;
+    min-width:0;
+    padding:12px 13px;
+    font:inherit;
+    font-size:15px;
+    color:var(--basin);
+    background:var(--birch);
+    border:1px solid var(--contour);
+    border-radius:2px;
+  }
+  .ns-input::placeholder{color:var(--contour)}
+  .ns-send{
+    flex:none;
+    padding:0 20px;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--birch);
+    background:var(--basin);
+    border:1px solid var(--basin);
+    border-radius:2px;
+    cursor:pointer;
+  }
+  .ns-send:hover{background:var(--water);border-color:var(--water)}
+  .ns-send:disabled{opacity:.4;cursor:not-allowed}
+
+  .ns-note{
+    margin-top:10px;
+    font-family:var(--mono);
+    font-size:9.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--contour);
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+  }
+  .ns-reset{
+    background:none;border:none;padding:0;
+    font:inherit;color:var(--contour);
+    cursor:pointer;text-decoration:underline;text-underline-offset:2px;
+  }
+  .ns-reset:hover{color:var(--blaze)}
+
+  :focus-visible{outline:2px solid var(--water);outline-offset:2px}
+
+  @keyframes rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  @keyframes blip{0%,80%,100%{opacity:.28}40%{opacity:1}}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important;transition:none !important}
+  }
+  @media (max-width:560px){
+    body{padding:0}
+    .ns-app{height:100vh;max-width:none;border:none}
+    .ns-row{max-width:94%}
+    .ns-cell:nth-child(3){display:none}
+  }
+</style>
+</head>
+<body>
+
+<main class="ns-app" id="app" data-live="0">
+
+  <header class="ns-head">
+    <div class="ns-brand">
+      <svg class="ns-star" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 0 L13.6 10.4 L24 12 L13.6 13.6 L12 24 L10.4 13.6 L0 12 L10.4 10.4 Z" fill="currentColor"/>
+      </svg>
+      <div>
+        <div class="ns-wordmark">North Star Outdoor Co.</div>
+        <div class="ns-sub">Support Bot</div>
+      </div>
+    </div>
+
+    <div class="ns-strip" role="status" aria-live="polite">
+      <div class="ns-cell">State <b id="stateOut">MAIN MENU</b></div>
+      <div class="ns-cell is-grow">Last intent <b id="intentOut">—</b></div>
+      <div class="ns-cell">Fallbacks <b id="fbOut">0</b></div>
+    </div>
+  </header>
+
+  <div class="ns-scrollwrap">
+    <svg class="ns-topo" viewBox="0 0 600 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <g fill="none" stroke="#A8875E" stroke-width="1">
+        <path d="M-40 96 C 90 44, 176 132, 288 100 S 470 26, 640 84"/>
+        <path d="M-40 132 C 96 82, 180 168, 292 138 S 474 66, 640 122"/>
+        <path d="M-40 170 C 104 122, 188 204, 298 176 S 480 108, 640 162"/>
+        <path d="M-40 300 C 70 250, 150 340, 250 306 S 430 236, 640 292"/>
+        <path d="M-40 338 C 78 292, 156 376, 256 344 S 436 276, 640 330"/>
+        <path d="M120 224 C 168 196, 232 202, 262 232 S 236 288, 176 276 S 96 250, 120 224 Z"/>
+        <path d="M146 228 C 178 212, 218 216, 238 234 S 220 266, 182 260 S 132 242, 146 228 Z"/>
+        <path d="M400 190 C 452 166, 520 178, 540 214 S 490 262, 436 250 S 372 216, 400 190 Z"/>
+      </g>
+    </svg>
+
+    <div class="ns-scroll" id="scroll" role="log" aria-live="polite" aria-label="Conversation"></div>
+  </div>
+
+  <footer class="ns-foot">
+    <div class="ns-quick" id="quick"></div>
+    <div class="ns-compose">
+      <label for="input" class="ns-sr" hidden>Type a message</label>
+      <input class="ns-input" id="input" type="text" autocomplete="off"
+             placeholder="Ask about an order, returns, shipping, or gear…" />
+      <button class="ns-send" id="send" type="button">Send</button>
+    </div>
+    <div class="ns-note">
+      <span>Simulated bot · mock data only</span>
+      <button class="ns-reset" id="reset" type="button">Restart conversation</button>
+    </div>
+  </footer>
+
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ══════════════════════════════════════════════════════
+     1. BUSINESS DATA — single source of truth
+        Exactly as supplied in the project brief.
+     ══════════════════════════════════════════════════════ */
+
+  var ORDERS = {
+    "111": { chip: "shipped",    line: "<b>Order #111</b> is shipped and arriving <b>tomorrow</b>." },
+    "222": { chip: "processing", line: "<b>Order #222</b> is processing and <b>ships within 24 hours</b>." },
+    "333": { chip: "delivered",  line: "<b>Order #333</b> is marked <b>delivered</b>." }
+  };
+
+  var RETURN_POLICY =
+    "<p>Here's how returns work at North Star:</p>" +
+    "<ul>" +
+      "<li><b>30 days</b> from delivery to start a return</li>" +
+      "<li>Items must be <b>unused</b></li>" +
+      "<li><b>Original packaging</b> required</li>" +
+    "</ul>" +
+    "<p>Start it here: <a href='https://northstaroutdoor.example.com/returns' target='_blank' rel='noopener'>northstaroutdoor.example.com/returns</a></p>";
+
+  var SHIPPING_INFO =
+    "<p>Our shipping options:</p>" +
+    "<ul>" +
+      "<li><b>Standard</b> — 3–5 business days</li>" +
+      "<li><b>Expedited</b> — 1–2 business days</li>" +
+    "</ul>";
+
+  var MENU_TEXT = "What can I help you with?";
+
+  /* ══════════════════════════════════════════════════════
+     2. INTENT RECOGNITION
+        Weighted keyword scoring. Strong phrases outrank
+        loose keywords, so "Can I return my order?" resolves
+        to RETURNS, not ORDER TRACKING.
+     ══════════════════════════════════════════════════════ */
+
+  var INTENTS = [
+    { name: "menu", patterns: [
+      [/\bmain menu\b/, 4], [/\bmenu\b/, 3], [/\bstart over\b/, 4],
+      [/\brestart\b/, 4], [/\bgo back\b/, 3], [/\bback to (the )?(main )?menu\b/, 5],
+      [/\breturn to (the )?(main )?menu\b/, 6], [/\bnevermind\b/, 3], [/\bnever mind\b/, 3]
+    ]},
+    { name: "human", patterns: [
+      [/\blive agent\b/, 6], [/\breal (person|human)\b/, 6], [/\bhuman\b/, 4],
+      [/\bagent\b/, 4], [/\brepresentative\b/, 4], [/\bspeak (to|with) (a|an|someone)\b/, 6],
+      [/\btalk (to|with) (a|an|someone)\b/, 6], [/\bescalate\b/, 4],
+      [/\bmanager\b/, 3], [/\boperator\b/, 3], [/\bcustomer service\b/, 3]
+    ]},
+    { name: "returns", patterns: [
+      [/\breturn policy\b/, 5], [/\breturns?\b/, 3], [/\brefunds?\b/, 4],
+      [/\bexchange\b/, 4], [/\bsend (it |this |them )?back\b/, 5],
+      [/\bmoney back\b/, 5], [/\bunused\b/, 2], [/\boriginal packaging\b/, 3],
+      [/\bdoesn'?t fit\b/, 4], [/\bwrong size\b/, 4]
+    ]},
+    { name: "track", patterns: [
+      [/\bwhere('?s| is| are)\b.*\b(order|package|parcel|stuff|it)\b/, 5],
+      [/\btrack\w*\b/, 4], [/\border status\b/, 5], [/\bstatus of\b/, 4],
+      [/\bmy (order|package|parcel|delivery)\b/, 4], [/\bpackage\b/, 2],
+      [/\border\b/, 2], [/\bshipment\b/, 3],
+      [/\bwhen (will|does).*(arrive|get here|come)\b/, 4], [/\barriv\w*\b/, 2]
+    ]},
+    { name: "shipping", patterns: [
+      [/\bshipping (options|times?|cost|info)\b/, 5], [/\bexpedited\b/, 5],
+      [/\bstandard shipping\b/, 5], [/\bbusiness days\b/, 4],
+      [/\bhow (long|fast|quick)\b/, 4], [/\bdelivery times?\b/, 4],
+      [/\bshipping\b/, 3], [/\bhow much.*ship\w*\b/, 4]
+    ]},
+    { name: "recommend", patterns: [
+      [/\brecommend\w*\b/, 5], [/\bwhat should i (buy|get)\b/, 5],
+      [/\bhelp me (find|pick|choose)\b/, 5], [/\bsuggest\w*\b/, 4],
+      [/\blooking for\b/, 4], [/\bshopping for\b/, 4], [/\bwhich (product|one)\b/, 3],
+      [/\bi need (a|an|some)\b/, 3], [/\bgear\b/, 2],
+      [/\b(jacket|tent|boots|backpack|sleeping bag|parka|fleece)\b/, 3],
+      [/\b(hiking|camping|backpacking)\b/, 2]
+    ]},
+    { name: "greeting", patterns: [
+      [/\b(hi|hey|hello|howdy|yo)\b/, 3], [/\bgood (morning|afternoon|evening)\b/, 3]
+    ]},
+    { name: "thanks", patterns: [
+      [/\bthank\w*\b/, 4], [/\bcheers\b/, 3], [/\bappreciate\b/, 3], [/\bawesome\b/, 2]
+    ]},
+    { name: "affirm", patterns: [
+      [/\b(yes|yeah|yep|yup|sure|ok|okay|please|correct)\b/, 3], [/\bit did\b/, 3]
+    ]},
+    { name: "deny", patterns: [
+      [/\b(no|nope|nah|negative)\b/, 3], [/\bnot (yet|really)\b/, 4],
+      [/\bhaven'?t\b/, 3], [/\bdidn'?t (get|arrive|come)\b/, 5], [/\bnever (got|arrived|came)\b/, 5]
+    ]}
+  ];
+
+  var THRESHOLD = 2;
+
+  function normalise(raw) {
+    return " " + String(raw).toLowerCase().replace(/[^\w\s#']/g, " ").replace(/\s+/g, " ").trim() + " ";
+  }
+
+  function detectIntent(raw) {
+    var t = normalise(raw), best = { name: "fallback", score: 0 };
+    for (var i = 0; i < INTENTS.length; i++) {
+      var s = 0, p = INTENTS[i].patterns;
+      for (var j = 0; j < p.length; j++) if (p[j][0].test(t)) s += p[j][1];
+      if (s > best.score) best = { name: INTENTS[i].name, score: s };
+    }
+    return best.score >= THRESHOLD ? best.name : "fallback";
+  }
+
+  function extractOrderNumber(raw) {
+    var m = String(raw).match(/#?\b(\d{2,8})\b/);
+    return m ? m[1] : null;
+  }
+
+  /* ══════════════════════════════════════════════════════
+     3. STATE
+     ══════════════════════════════════════════════════════ */
+
+  var STATES = {
+    MAIN:        "MAIN MENU",
+    AWAIT_ORDER: "AWAITING ORDER NO.",
+    ORDER_CHECK: "DELIVERY FOLLOW-UP",
+    REC_Q1:      "RECOMMEND · Q1",
+    REC_Q2:      "RECOMMEND · Q2",
+    LIVE_AGENT:  "LIVE AGENT"
+  };
+
+  var state = "MAIN";
+  var fallbacks = 0;
+  var recCategory = null;
+  var agentTurn = 0;
+  var locked = false;
+
+  var app     = document.getElementById("app");
+  var scroll  = document.getElementById("scroll");
+  var quick   = document.getElementById("quick");
+  var input   = document.getElementById("input");
+  var sendBtn = document.getElementById("send");
+
+  function setState(s) {
+    state = s;
+    document.getElementById("stateOut").textContent = STATES[s];
+    app.setAttribute("data-live", s === "LIVE_AGENT" ? "1" : "0");
+  }
+  function setIntent(i) {
+    document.getElementById("intentOut").textContent = i === "fallback" ? "UNRECOGNISED" : i.toUpperCase();
+  }
+  function setFallbacks(n) {
+    fallbacks = n;
+    document.getElementById("fbOut").textContent = String(n);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     4. RENDERING
+     ══════════════════════════════════════════════════════ */
+
+  var MAIN_QR   = ["Track my order", "Returns & exchanges", "Shipping info", "Recommend gear", "Talk to a human"];
+  var AGENT_QR  = ["Back to main menu", "Continue with the bot"];
+
+  function toBottom() { scroll.scrollTop = scroll.scrollHeight; }
+
+  function bubble(html, who) {
+    var row = document.createElement("div");
+    row.className = "ns-row from-" + who;
+    var msg = document.createElement("div");
+    msg.className = "ns-msg";
+    if (who === "agent") {
+      row.className = "ns-row from-bot from-agent";
+      msg.innerHTML = "<div class='ns-who'>Dana R. · Live Agent</div>" + html;
+    } else {
+      msg.innerHTML = html;
+    }
+    row.appendChild(msg);
+    scroll.appendChild(row);
+    toBottom();
+  }
+
+  function typing() {
+    var row = document.createElement("div");
+    row.className = "ns-row from-bot";
+    row.id = "typing";
+    row.innerHTML = "<div class='ns-msg ns-typing'><i></i><i></i><i></i></div>";
+    scroll.appendChild(row);
+    toBottom();
+    return row;
+  }
+
+  function reply(html, who) {
+    locked = true;
+    sendBtn.disabled = true;
+    var t = typing();
+    setTimeout(function () {
+      t.remove();
+      bubble(html, who || "bot");
+      locked = false;
+      sendBtn.disabled = false;
+      input.focus();
+    }, 420);
+  }
+
+  function setQuick(list) {
+    quick.innerHTML = "";
+    (list || []).forEach(function (label) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ns-qr";
+      b.textContent = label;
+      b.addEventListener("click", function () { if (!locked) submit(label); });
+      quick.appendChild(b);
+    });
+  }
+
+  function chip(kind, label) {
+    return "<span class='ns-chip' data-s='" + kind + "'>" + label + "</span>";
+  }
+
+  /* ══════════════════════════════════════════════════════
+     5. USE CASE — ORDER TRACKING
+     ══════════════════════════════════════════════════════ */
+
+  function askOrderNumber() {
+    setState("AWAIT_ORDER");
+    reply("<p>Happy to check. What's your <b>order number</b>?</p><p>You can just type the digits.</p>");
+    setQuick(["111", "222", "333", "Back to main menu"]);
+  }
+
+  function resolveOrder(num) {
+    var o = ORDERS[num];
+
+    if (!o) {
+      reply(
+        chip("invalid", "Invalid order") +
+        "<p>I couldn't find an order matching <b>#" + num + "</b>. Double-check the number and try again?</p>" +
+        "<p>If it looks right on your end, a live agent can dig into it.</p>"
+      );
+      setState("AWAIT_ORDER");
+      setQuick(["Try another number", "Talk to a human", "Back to main menu"]);
+      return;
+    }
+
+    if (num === "333") {
+      reply(chip(o.chip, "Delivered") + "<p>" + o.line + "</p><p>Did it <b>arrive safely</b>?</p>");
+      setState("ORDER_CHECK");
+      setQuick(["Yes, it arrived", "No, I never got it", "It arrived damaged"]);
+      return;
+    }
+
+    reply(chip(o.chip, o.chip) + "<p>" + o.line + "</p><p>Anything else I can help with?</p>");
+    toMain(false);
+  }
+
+  function handleDeliveryFollowUp(text, intent) {
+    var t = normalise(text);
+
+    if (intent === "affirm") {
+      reply("<p>Great — glad it made it. Enjoy the trail. 🏔</p><p>" + MENU_TEXT + "</p>");
+      return toMain(false);
+    }
+    if (/damag|broken|torn|ripped|defect/.test(t)) {
+      reply("<p>Sorry to hear that. A damaged item qualifies for a return or exchange:</p>" + RETURN_POLICY);
+      return toMain(false);
+    }
+    if (intent === "deny") {
+      reply(
+        "<p>That's not right. Since tracking says delivered but it isn't in your hands, " +
+        "this needs a person to investigate.</p><p>Let me get you a live agent.</p>"
+      );
+      return setTimeout(handoff, 900);
+    }
+    return fallback();
+  }
+
+  /* ══════════════════════════════════════════════════════
+     6. USE CASE — PRODUCT RECOMMENDATIONS
+     ══════════════════════════════════════════════════════ */
+
+  var REC_Q2 = {
+    apparel: {
+      q: "<p>Got it. What are the <b>conditions</b> you're dressing for?</p>",
+      opts: ["Cold and wet", "Warm and dry", "Shoulder season"],
+      map: [
+        [/cold|wet|rain|snow|winter|freez/, "Insulated shells and rain gear",
+          "Waterproof outer layers with a down or synthetic insulated midlayer underneath."],
+        [/warm|dry|hot|sun|summer/, "Lightweight base layers and sun hoodies",
+          "Breathable, quick-drying fabrics with UPF protection."],
+        [/shoulder|spring|autumn|fall|mild|between/, "Midlayers and fleece",
+          "Versatile pieces you can throw on and shed as the temperature swings."]
+      ]
+    },
+    camping: {
+      q: "<p>Nice. How many <b>nights out</b> are you planning?</p>",
+      opts: ["One night", "A weekend", "A week or more"],
+      map: [
+        [/one|single|1 night|overnight/, "Compact one to two person tents and sleeping pads",
+          "Light enough to carry in, simple enough to pitch after dark."],
+        [/weekend|two|2|three|3|couple/, "Three-season tents and sleeping bags",
+          "The workhorse setup for most trips between spring and autumn."],
+        [/week|long|extended|thru|month|many/, "Backpacking systems and cook kits",
+          "Packs, stoves, and shelters built to be lived out of."]
+      ]
+    },
+    unsure: {
+      q: "<p>No problem — that's what I'm here for. Where are you <b>headed</b>?</p>",
+      opts: ["Day hikes", "Car camping", "Backcountry"],
+      map: [
+        [/day|hike|hiking|trail|walk/, "Daypacks and trail footwear",
+          "Start with a pack that fits and boots that are broken in."],
+        [/car|drive|campground|site|family/, "Car-camping comfort",
+          "Roomy tents, camp chairs, and lanterns. Weight doesn't matter when you're parked."],
+        [/backcountry|remote|wild|off grid|off-grid|alpine|mountain/, "Ultralight backcountry setups",
+          "Every gram counts when the trailhead is behind you."]
+      ]
+    }
+  };
+
+  function startRecommendation() {
+    setState("REC_Q1");
+    reply("<p>Let's find you something good. First — what are you <b>shopping for</b>?</p>");
+    setQuick(["Apparel", "Camping gear", "Not sure yet"]);
+  }
+
+  function handleRecQ1(text) {
+    var t = normalise(text);
+    if (/apparel|cloth|jacket|wear|layer|boots|pants|fleece|parka/.test(t))            recCategory = "apparel";
+    else if (/camp|tent|sleep|stove|pack|backpack|gear|cook/.test(t))                  recCategory = "camping";
+    else if (/not sure|unsure|dunno|don'?t know|no idea|browse|help/.test(t))          recCategory = "unsure";
+    else return fallback();
+
+    setState("REC_Q2");
+    reply(REC_Q2[recCategory].q);
+    setQuick(REC_Q2[recCategory].opts);
+  }
+
+  function handleRecQ2(text) {
+    var t = normalise(text), cfg = REC_Q2[recCategory];
+    for (var i = 0; i < cfg.map.length; i++) {
+      if (cfg.map[i][0].test(t)) {
+        reply(
+          "<p>Based on that, I'd point you at <b>" + cfg.map[i][1] + "</b>.</p>" +
+          "<p>" + cfg.map[i][2] + "</p>" +
+          "<p>Want to look at anything else?</p>"
+        );
+        recCategory = null;
+        return toMain(false);
+      }
+    }
+    return fallback();
+  }
+
+  /* ══════════════════════════════════════════════════════
+     7. USE CASE — HUMAN HANDOFF
+     ══════════════════════════════════════════════════════ */
+
+  var AGENT_LINES = [
+    "Thanks for holding. I've got your conversation history in front of me, so no need to repeat yourself.",
+    "Noted — I'm looking into that now. Anything else you want me to check while I'm in here?",
+    "Understood. I'll follow up by email once I've sorted it out on our end."
+  ];
+
+  function handoff(reason) {
+    setState("LIVE_AGENT");
+    setFallbacks(0);
+    agentTurn = 0;
+
+    var lead = reason === "fallback"
+      ? "<p>I'm still not following, and I don't want to waste your time.</p><p><b>Connecting you to a live agent…</b></p>"
+      : "<p>Of course. <b>Connecting you to a live agent…</b></p>";
+
+    reply(lead);
+    setQuick([]);
+
+    setTimeout(function () {
+      bubble(
+        "<p>Hi, I'm Dana from the North Star support team. I can see everything you and the bot discussed.</p>" +
+        "<p>What can I do for you?</p>",
+        "agent"
+      );
+      setQuick(AGENT_QR);
+    }, 1500);
+  }
+
+  function handleLiveAgent(text, intent) {
+    if (intent === "menu" || /^back to main menu$/i.test(text.trim())) {
+      setState("MAIN");
+      reply("<p>Dana has stepped away. You're back with the support bot.</p><p>" + MENU_TEXT + "</p>");
+      setQuick(MAIN_QR);
+      return;
+    }
+    if (/^continue with the bot$/i.test(text.trim())) {
+      setState("MAIN");
+      reply("<p>You're back with the support bot. Ask me anything.</p>");
+      setQuick(MAIN_QR);
+      return;
+    }
+
+    reply("<p>" + AGENT_LINES[agentTurn % AGENT_LINES.length] + "</p>", "agent");
+    agentTurn++;
+    setQuick(AGENT_QR);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     8. FALLBACK — escalates after three misses
+     ══════════════════════════════════════════════════════ */
+
+  function fallback() {
+    setFallbacks(fallbacks + 1);
+
+    if (fallbacks >= 3) return handoff("fallback");
+
+    if (fallbacks === 2) {
+      reply(
+        "<p><b>I didn't understand that</b> — that's twice now, sorry.</p>" +
+        "<p>Pick one below, or I can hand you to a live agent.</p>"
+      );
+      setQuick(["Track my order", "Returns & exchanges", "Recommend gear", "Talk to a human"]);
+      return;
+    }
+
+    reply(
+      "<p><b>I didn't understand that.</b> Here's what I can help with:</p>" +
+      "<ul><li>Tracking an order</li><li>Returns and exchanges</li>" +
+      "<li>Shipping times</li><li>Gear recommendations</li></ul>" +
+      "<p>Or say <i>talk to a human</i> and I'll pass you across.</p>"
+    );
+    setQuick(MAIN_QR);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     9. ROUTER — every resolved flow returns here
+     ══════════════════════════════════════════════════════ */
+
+  function toMain(announce) {
+    setState("MAIN");
+    setFallbacks(0);
+    if (announce) reply("<p>" + MENU_TEXT + "</p>");
+    setQuick(MAIN_QR);
+  }
+
+  function route(text) {
+    var intent = detectIntent(text);
+    setIntent(intent);
+
+    // Explicit escalation always wins, from any state.
+    if (intent === "human") return handoff("request");
+
+    if (state === "LIVE_AGENT") return handleLiveAgent(text, intent);
+
+    if (intent === "menu") {
+      reply("<p>Back to the top.</p><p>" + MENU_TEXT + "</p>");
+      return toMain(false);
+    }
+
+    if (state === "AWAIT_ORDER") {
+      var num = extractOrderNumber(text);
+      if (num) { setFallbacks(0); return resolveOrder(num); }
+      if (/try another/i.test(text)) { setFallbacks(0); return askOrderNumber(); }
+      if (intent !== "fallback" && intent !== "track") return dispatch(intent, text); // let them switch topic
+      reply("<p>I need an <b>order number</b> to look that up — something like <b>111</b>.</p>");
+      setQuick(["111", "222", "333", "Talk to a human"]);
+      return;
+    }
+
+    if (state === "ORDER_CHECK") return handleDeliveryFollowUp(text, intent);
+    if (state === "REC_Q1")      return handleRecQ1(text);
+    if (state === "REC_Q2")      return handleRecQ2(text);
+
+    return dispatch(intent, text);
+  }
+
+  function dispatch(intent, text) {
+    switch (intent) {
+      case "track": {
+        var num = extractOrderNumber(text);   // "Where's order 111?" — skip the ask
+        setFallbacks(0);
+        return num ? resolveOrder(num) : askOrderNumber();
+      }
+      case "returns":
+        setFallbacks(0);
+        reply(RETURN_POLICY + "<p>Anything else?</p>");
+        return toMain(false);
+
+      case "shipping":
+        setFallbacks(0);
+        reply(SHIPPING_INFO + "<p>Anything else?</p>");
+        return toMain(false);
+
+      case "recommend":
+        setFallbacks(0);
+        return startRecommendation();
+
+      case "greeting":
+        setFallbacks(0);
+        reply("<p>Hey there. 🏔 " + MENU_TEXT + "</p>");
+        return toMain(false);
+
+      case "thanks":
+        setFallbacks(0);
+        reply("<p>Anytime. Anything else before you head out?</p>");
+        return toMain(false);
+
+      default:
+        return fallback();
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════
+     10. WIRING
+     ══════════════════════════════════════════════════════ */
+
+  function submit(text) {
+    text = String(text).trim();
+    if (!text || locked) return;
+    bubble(text.replace(/[<>]/g, ""), "user");
+    input.value = "";
+    route(text);
+  }
+
+  sendBtn.addEventListener("click", function () { submit(input.value); });
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); submit(input.value); }
+  });
+
+  document.getElementById("reset").addEventListener("click", boot);
+
+  function boot() {
+    scroll.innerHTML = "";
+    recCategory = null;
+    agentTurn = 0;
+    locked = false;
+    sendBtn.disabled = false;
+    setIntent("—");
+    setFallbacks(0);
+    setState("MAIN");
+    bubble(
+      "<p>Welcome to <b>North Star Outdoor Co.</b> I'm the support bot.</p>" +
+      "<p>I can track an order, walk you through returns, explain shipping, or help you pick gear. " +
+      "Ask however you like — or tap an option below.</p>",
+      "bot"
+    );
+    setQuick(MAIN_QR);
+    input.focus();
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

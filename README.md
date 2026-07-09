@@ -6,7 +6,7 @@ A customer support chatbot for a small e-commerce business selling outdoor appar
 
 ## How to run it
 
-Open `north-star-support-bot.html` in any browser.
+Open `index.html` in any browser.
 
 That's it. No API keys, no subscriptions, no accounts, no build step, no internet connection. Everything — the intent engine, the conversation state machine, the mock order data — is contained in that single file.
 
@@ -97,5 +97,5 @@ Explicit escalation (*"talk to a human"*, *"live agent"*, *"real person"*) is ho
 
 ## Files
 
-- `north-star-support-bot.html` — the complete chatbot
+- `index.html` — the complete chatbot
 - `README.md` — this file
